@@ -11,27 +11,33 @@
  */
 defined( 'ABSPATH' ) or die( 'No script kiddies please!' );
 
-add_filter( 'jetpack_relatedposts_filter_filters', 'jetpackme_filter_exclude_category' );
-add_filter( 'jetpack_relatedposts_filter_options', 'jetpackme_more_related_posts' );
+add_filter( 'jetpack_relatedposts_filter_options', 'jetpackme_no_related_posts' );
 add_shortcode( 'jprel', 'jetpackme_custom_related' );
 
 function jetpackme_custom_related( $atts ) {
-    $content = '<div style="display: block;" id="jp-relatedposts" class="jp-relatedposts">
+    $content = '';
+    $before = '<div style="display: block;" id="jp-relatedposts" class="jp-relatedposts">
   <h3 class="jp-relatedposts-headline"><em>Related</em></h3>
 <div class="jp-relatedposts-items jp-relatedposts-items-visual">';
+    $after = '</div></div>';
     $posts = array();
     $i = 0;
     $postid;
     $linebreak = '
 
 ';
+
     if ( class_exists( 'Jetpack_RelatedPosts' ) && method_exists( 'Jetpack_RelatedPosts', 'init_raw' ) ) {
+
         $postid = get_the_ID();
         $postpermalink = get_permalink( $postid );
+
         // Provide int values for from and to dates
         $date_int = get_post_time('U', true);
-        $from = strtotime('-11 month 2 week 3 day', $date_int);
         $to = strtotime('now');
+        $from = strtotime('-6 month 0 week 1 day', $to);
+
+        // Get related posts
         $related = Jetpack_RelatedPosts::init_raw()
             ->set_query_name( 'jetpackme-shortcode' ) // Optional, name can be anything
             ->get_for_post_id(
@@ -42,39 +48,48 @@ function jetpackme_custom_related( $atts ) {
                     'date_range' => array(
                         'from' => $from,
                         'to' => $to
-                    ),
-                    'has_terms' => array( 'not' =>
-                        array( 'term' => array( 'category.slug' => 'farm-ranch' ) )
                     )
                 )
             );
+
         if ( $related ) {
+
+            $content .= $before;
+
             foreach ( $related as $result ) {
+
                 // Get the related post and data
                 $related_post = get_post( $result[ 'id' ] );
                 $related_id = $related_post->ID;
                 $related_permalink = get_permalink( $related_id );
                 $related_content = $related_post->post_content;
+
                 // Get the post title
                 $posttitle = agrilifejp_gettitle( $related_post->post_title, $related_content );
+
+                // Get the post date
+                $postdate = date( 'F j, Y', strtotime( $related_post->post_date ) );
+
                 // Get the image most closely assigned to the post
                 $postimageurl = agrilifejp_getimg( $related_id, $related_content );
+
                 // Get the category
                 $category = get_the_category( $related_id );
+
                 // Get the contacts for the article
                 $contacts = get_post_meta ( $related_id, 'cmb_media_info', true );
-                // Get the excerpt
-                $postexcerpt = agrilifejp_getexcerpt( $related_post->post_excerpt, $related_content );
-                // Get the full title
-                $title = $posttitle . $linebreak . ' ' . $postexcerpt;
+
                 // Provide Google Analytics
                 $onclick = 'onclick="_gaq.push([\'_trackEvent\', \'related-post-click\', \'' . $postpermalink . '\', \''. $related_permalink .'\']);"';
-                $posts[] = '<div class="jp-relatedposts-post jp-relatedposts-post' . $i . ' jp-relatedposts-post-thumbs" data-post-id="' . $related_id . '" data-post-format="false"><a data-position="' . $i . '" data-origin="' . $postid . '" rel="nofollow" title="' . $title . '" href="' . $related_permalink . '" ' . $onclick . ' class="jp-relatedposts-post-a"><img class="jp-relatedposts-post-img" src="' . $postimageurl . '" alt="' . $related_post->post_title . '" width="350"></a><h4 class="jp-relatedposts-post-title"><a data-position="' . $i . '" data-origin="' . $postid . '" rel="nofollow" title="' . $title . '" href="' . $related_permalink . '" ' . $onclick . ' class="jp-relatedposts-post-a">' . $posttitle . '</a></h4><p class="jp-relatedposts-post-excerpt">' . $postexcerpt . '</p><p class="jp-relatedposts-post-date">' . get_the_date('F j, Y', $related_id) . '</p><p class="jp-relatedposts-post-context">In "' . $category[0]->name . '"</p></div>';
+                $posts[] = '<div class="jp-relatedposts-post jp-relatedposts-post' . $i . ' jp-relatedposts-post-thumbs" data-post-id="' . $related_id . '" data-post-format="false"><a data-position="' . $i . '" data-origin="' . $postid . '" rel="nofollow" title="' . $posttitle . '" href="' . $related_permalink . '" ' . $onclick . ' class="jp-relatedposts-post-a"><img class="jp-relatedposts-post-img" src="' . $postimageurl . '" alt="' . $related_post->post_title . '" width="350"></a><h4 class="jp-relatedposts-post-title"><a data-position="' . $i . '" data-origin="' . $postid . '" rel="nofollow" title="' . $posttitle . '" href="' . $related_permalink . '" ' . $onclick . ' class="jp-relatedposts-post-a">' . $posttitle . '</a></h4><p class="jp-relatedposts-post-date" style="display: block;">' . $postdate . '</p><p class="jp-relatedposts-post-context">In "' . $category[0]->name . '"</p></div>';
+
             }
+
+            $content .= implode( '', $posts );
+            $content .= $after;
+
         }
     }
-    $content .= implode( '', $posts );
-    $content .= '</div></div>';
 
     // Return a list of post titles separated by commas
     return $content;
@@ -133,7 +148,15 @@ function agrilifejp_getimg( $post_id, $post_content ){
 
 function jetpackme_filter_exclude_category( $filters ) {
     $filters[] = array( 'not' =>
-      array( 'term' => array( 'category.slug' => 'farm-ranch' ) )
+        array( 'term' => array( 'category.slug' => 'farm-ranch' ) )
     );
+
     return $filters;
+}
+
+function jetpackme_no_related_posts( $options ) {
+    if ( is_single( array( 52425 ) ) || ( class_exists( 'Jetpack_RelatedPosts' ) && method_exists( 'Jetpack_RelatedPosts', 'init_raw' ) ) ) {
+        $options['enabled'] = false;
+    }
+    return $options;
 }
